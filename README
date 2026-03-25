@@ -1,0 +1,7 @@
+This script is supposed to be run on team.alt
+
+For example in this way:
+
+cat list | xargs -I {} ./rm-srpm-unmets -q {}
+
+Or you can emulate del task by running it without -q.
