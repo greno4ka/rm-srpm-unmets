@@ -4,6 +4,13 @@ export LC_ALL=C
 
 repo="$(realpath /ALT/repo/sisyphus/release/latest)"
 
+quiet=0
+
+if [ "${1-}" = "-q" ]; then
+	quiet=1
+	shift
+fi
+
 tmpdir=
 cleanup_tmpdir()
 {
@@ -16,7 +23,7 @@ trap 'cleanup_tmpdir $?' EXIT
 trap 'exit 143' HUP INT QUIT PIPE TERM
 
 [ "$#" -ge 1 ] || {
-	echo "Usage: $0 <source_package ...>"
+	echo "Usage: $0 [-q] <source_package ...>"
 	exit 1
 }
 
@@ -24,7 +31,10 @@ printf '%s\n' "$@" > "$tmpdir"/rm-sname
 sort -u -o "$tmpdir"/rm-sname{,}
 join "$repo"/files/list/src.list "$tmpdir"/rm-sname -o 1.3 \
 	> "$tmpdir"/rm-src
-cat "$tmpdir"/rm-src
+
+if [ "$quiet" -eq 0 ]; then
+	cat "$tmpdir"/rm-src
+fi
 
 arches=x86_64
 comps=classic
@@ -33,20 +43,28 @@ noarch_comps=classic
 for a in noarch $arches; do
 	mkdir "$tmpdir/$a"
 	rsync -rltp "$repo/$a"/base.bloat/ "$tmpdir/$a"/base/
+
 	for c in "$tmpdir/$a"/base/pkglist.*; do
 		compname="${c##*.}"
 		mkdir "$tmpdir/$a/RPMS.$compname"
 		pkglist-query "$compname\t%{sourcerpm}\t%{NVRA}.rpm\n" "$c"
 	done > "$tmpdir"/all-comp-src-bin
+
 	sort -k2,2 -o "$tmpdir"/all-comp-src-bin{,}
+
 	join -1 2 "$tmpdir"/all-comp-src-bin "$tmpdir"/rm-src -t $'\t' -o '1.1 1.2 1.3' \
 		> "$tmpdir"/rm-name-src-bin
+
 	sort -o "$tmpdir"/rm-name-src-bin{,}
-	echo "removing ($a):"
-	echo  =============
-	cat "$tmpdir"/rm-name-src-bin
-	echo  =============
- 	genbasedir \
+
+	if [ "$quiet" -eq 0 ]; then
+		echo "removing ($a):"
+		echo  =============
+		cat "$tmpdir"/rm-name-src-bin
+		echo  =============
+	fi
+
+	genbasedir \
 		--maybe-unchanged \
 		--bloat \
 		--patch-basedir \
@@ -61,6 +79,14 @@ for a in $arches; do
 	rpm file:$tmpdir $a classic
 	rpm file:$tmpdir noarch classic
 	EOF
-	echo "unmets in $a:"
-	unmets -a "$a" -s "$tmpdir/$a.list"
+
+	if [ "$quiet" -eq 0 ]; then
+		echo "unmets in $a:"
+		unmets -a "$a" -s "$tmpdir/$a.list"
+	else
+		list=$(unmets -a "$a" -s "$tmpdir/$a.list")
+		if [ -z "$list" ]; then
+			echo "$1"
+		fi
+	fi
 done
